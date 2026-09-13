@@ -1,0 +1,29 @@
+name: Frontend Test
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - README.md
+      - docs/**
+      - '**/*.md'
+      - VERSION
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-test-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck + build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Test
+        uses: ./.github/actions/frontend-test
