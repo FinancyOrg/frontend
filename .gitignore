@@ -1,0 +1,6 @@
+.DS_Store
+.firebase
+oauth-config.js
+node_modules/
+dist/
+.env.local
