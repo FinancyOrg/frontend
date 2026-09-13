@@ -1,0 +1,24 @@
+name: Frontend Test
+description: Run TypeScript typecheck and a production Vite build
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: package-lock.json
+
+    - name: Install
+      shell: bash
+      run: npm ci
+
+    - name: Typecheck
+      shell: bash
+      run: npm run typecheck
+
+    - name: Build
+      shell: bash
+      run: npm run build

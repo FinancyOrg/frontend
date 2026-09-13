@@ -1,0 +1,126 @@
+name: Frontend Image
+
+on:
+  workflow_run:
+    workflows: [Frontend Test Main]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: frontend-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: Build and Push Frontend
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-tags: true
+
+      - name: Resolve image name and tag
+        id: tag
+        run: |
+          set -euo pipefail
+
+          tag="$(tr -d '[:space:]' < VERSION)"
+          image="$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.tag.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Require OAuth client ID
+        env:
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OAUTH_CLIENT_ID}" ]; then
+            echo "OAUTH_CLIENT_ID GitHub secret is empty" >&2
+            exit 1
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_DEV_LOGIN=0
+            VITE_OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}
+
+      - name: Create repo tag
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            existing="$(git rev-list -n 1 "refs/tags/${TAG}")"
+            current="$(git rev-parse HEAD)"
+            if [ "${existing}" = "${current}" ]; then
+              echo "Tag ${TAG} already points at ${current}"
+              exit 0
+            fi
+            echo "Tag ${TAG} already exists on ${existing}, not ${current}"
+            exit 1
+          fi
+
+          git tag "${TAG}"
+          git push origin "refs/tags/${TAG}"
+          echo "Created tag ${TAG}"
+
+      - name: Summarize
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          {
+            echo "## Published ${IMAGE}:${TAG}"
+            echo
+            echo "Git tag: \`${TAG}\`"
+            echo
+            echo "Public pull:"
+            echo
+            echo "\`\`\`"
+            echo "docker pull ${IMAGE}:${TAG}"
+            echo "docker pull ${IMAGE}:latest"
+            echo "\`\`\`"
+            echo
+            echo "Static assets for Firebase Hosting:"
+            echo
+            echo "\`\`\`"
+            echo "cid=\$(docker create ${IMAGE}:${TAG})"
+            echo "docker cp \"\${cid}:/usr/share/nginx/html\" ./dist"
+            echo "docker rm \"\${cid}\""
+            echo "\`\`\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
