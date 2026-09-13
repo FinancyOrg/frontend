@@ -15,7 +15,7 @@ Hosting and Firebase deploy live in a separate deploy repository. This repositor
 
 ```bash
 cp .env.example .env.local
-# Optional: set VITE_OAUTH_CLIENT_ID for Google Sign-In
+# Optional: cp public/oauth-config.example.js public/oauth-config.js
 npm install
 npm run dev
 ```
@@ -28,9 +28,12 @@ While developing (`npm run dev`), the sign-in screen offers **Continue locally**
 
 | Variable | When | Purpose |
 |----------|------|---------|
-| `VITE_OAUTH_CLIENT_ID` | `.env.local` / build | Google OAuth client ID for production sign-in |
+| `VITE_OAUTH_CLIENT_ID` | `.env.local` | Optional Google client ID override for local dev |
 | `VITE_DEV_LOGIN=1` | build time | Show **Continue locally** in non-dev builds (for local compose images) |
 | `API_PROXY_TARGET` | `npm run dev` | Override the `/api` proxy target (default `http://localhost:8081`) |
+| `OAUTH_CLIENT_ID` | container runtime | Writes `/oauth-config.js` when the production container starts |
+
+Google Sign-In reads the client ID at runtime from `public/oauth-config.js`, not from the image build. Copy [`public/oauth-config.example.js`](public/oauth-config.example.js) for local static hosting, or set `OAUTH_CLIENT_ID` when running the container.
 
 ## Validation and production build
 
@@ -57,12 +60,10 @@ podman build --target dev -t financy-frontend:dev .
 podman build --build-arg VITE_DEV_LOGIN=1 -t financy-frontend:local .
 ```
 
-For a Google Sign-In production build:
+Run the production container with Google Sign-In configured at runtime:
 
 ```bash
-podman build \
-  --build-arg VITE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com \
-  -t financy-frontend .
+podman run --rm -e OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com -p 5173:80 financy-frontend
 ```
 
 The production container expects a backend service named `backend` on port 8081 (see `nginx.conf`).
@@ -90,14 +91,14 @@ frontend:
     - "5173:80"
 ```
 
-For Firebase Hosting in the deploy repo, extract the built static files from the image without rebuilding:
+For Firebase Hosting in the deploy repo, extract the built static files from the image, add `oauth-config.js`, then deploy:
 
 ```bash
 cid=$(docker create ghcr.io/financyorg/frontend:0.0.1)
 docker cp "${cid}:/usr/share/nginx/html" ./dist
 docker rm "${cid}"
+cp public/oauth-config.example.js dist/oauth-config.js
+# edit dist/oauth-config.js with the real client ID
 ```
 
 PRs run the same typecheck and build. The semver workflow keeps [`VERSION`](VERSION) ahead of the latest git tag.
-
-Set the `OAUTH_CLIENT_ID` repository secret before the image workflow can bake Google Sign-In into production images.

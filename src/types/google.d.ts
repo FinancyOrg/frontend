@@ -2,6 +2,7 @@ export {};
 
 declare global {
   interface Window {
+    __FINANCY_OAUTH_CLIENT_ID__?: string;
     google?: {
       accounts?: {
         id?: {

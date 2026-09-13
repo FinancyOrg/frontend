@@ -1,5 +1,6 @@
 .DS_Store
 .firebase
+public/oauth-config.js
 oauth-config.js
 node_modules/
 dist/
