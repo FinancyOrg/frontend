@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, api } from "../api/client";
 import type { Session } from "../api/types";
+import { resolveOAuthClientId } from "../lib/oauthClientId";
 
 interface AuthContextValue {
   session: Session | null;
@@ -115,9 +116,11 @@ function LoginScreen() {
     let cancelled = false;
 
     const load = async () => {
-      const clientId = import.meta.env.VITE_OAUTH_CLIENT_ID as string | undefined;
+      const clientId = await resolveOAuthClientId();
       if (!clientId) {
-        setError("VITE_OAUTH_CLIENT_ID is not configured.");
+        setError(
+          "Google Sign-In is not configured. Provide oauth-config.js or OAUTH_CLIENT_ID at runtime.",
+        );
         return;
       }
       try {

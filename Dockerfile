@@ -14,15 +14,19 @@ RUN npm ci
 
 COPY . .
 
-# Vite embeds env vars at build time. Production images default to Google
-# Sign-In. For local compose stacks, pass VITE_DEV_LOGIN=1 instead:
+# Vite embeds env vars at build time. OAuth client IDs are injected at runtime
+# via OAUTH_CLIENT_ID (container env) or oauth-config.js (static hosting).
+# For local compose stacks, pass VITE_DEV_LOGIN=1 instead:
 #   podman build --build-arg VITE_DEV_LOGIN=1 -t financy-frontend .
 ARG VITE_DEV_LOGIN=0
-ARG VITE_OAUTH_CLIENT_ID=""
-ENV VITE_DEV_LOGIN=$VITE_DEV_LOGIN VITE_OAUTH_CLIENT_ID=$VITE_OAUTH_CLIENT_ID
+ENV VITE_DEV_LOGIN=$VITE_DEV_LOGIN
 RUN npm run typecheck && npm run build
 
 FROM docker.io/library/nginx:1.27-alpine AS production
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 80
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]
