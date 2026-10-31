@@ -196,14 +196,23 @@ function zoneOffsetMs(date: Date, timeZone: string): number {
   return wallUtcMs(partsInTimeZone(date, timeZone)) - wallUtcMs(partsInTimeZone(date, "UTC"));
 }
 
+/** Shift a 1-indexed calendar month. Year rolls over; day is not applied here. */
+function shiftCalendarMonth(
+  year: number,
+  month: number,
+  monthOffset: number,
+): { year: number; month: number } {
+  const date = new Date(Date.UTC(year, month - 1 + monthOffset, 1));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+}
+
 /** Calendar month `monthOffset` from today in the ledger timezone. 0 is this month; month is 1-indexed. */
 export function calendarMonthFromNow(
   monthOffset: number,
   timeZone: string = DEFAULT_LEDGER_TIMEZONE,
 ): { year: number; month: number } {
   const now = partsInTimeZone(new Date(), timeZone);
-  const date = new Date(Date.UTC(now.year, now.month - 1 + monthOffset, 1));
-  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+  return shiftCalendarMonth(now.year, now.month, monthOffset);
 }
 
 /** Keep day (clamped) and time; set the calendar month. `month` is 1-indexed. */
@@ -215,6 +224,34 @@ export function withDateTimeLocalMonth(value: string, year: number, month: numbe
     month,
     day: Math.min(parts.day, lastDayOfMonth(year, month)),
   });
+}
+
+/** Move the calendar date by whole days. Month and year roll over; time is kept. */
+export function shiftDateTimeLocalByDays(
+  value: string,
+  dayOffset: number,
+  timeZone: string = DEFAULT_LEDGER_TIMEZONE,
+): string {
+  const parts = dateTimeLocalPartsOrNow(value, timeZone);
+  const shifted = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + dayOffset));
+  return formatDateTimeLocal({
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hours: parts.hours,
+    minutes: parts.minutes,
+  });
+}
+
+/** Move the calendar month. Year rolls over, the day clamps to the target month, and time is kept. */
+export function shiftDateTimeLocalByMonths(
+  value: string,
+  monthOffset: number,
+  timeZone: string = DEFAULT_LEDGER_TIMEZONE,
+): string {
+  const parts = dateTimeLocalPartsOrNow(value, timeZone);
+  const { year, month } = shiftCalendarMonth(parts.year, parts.month, monthOffset);
+  return withDateTimeLocalMonth(value, year, month, timeZone);
 }
 
 /** End of ledger-timezone today, for datetime-local max. */

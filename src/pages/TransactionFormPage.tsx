@@ -30,17 +30,28 @@ import {
   parseMajorToMinor,
   toDateTimeLocal,
   civilDateFromDateTimeLocal,
+  shiftDateTimeLocalByDays,
+  shiftDateTimeLocalByMonths,
   withDateTimeLocalMonth,
-  withDateTimeLocalToday,
 } from "../lib/money";
 
 type AmountSide = "from" | "to";
-type DateChipId = "today" | "this-month" | "last-month" | "two-months" | "no-change";
+type DateChipId = "minus-day" | "plus-day" | "this-month" | "minus-month" | "plus-month" | "no-change";
 
-const monthChipOffsets: Record<Exclude<DateChipId, "today" | "no-change">, number> = {
-  "this-month": 0,
-  "last-month": -1,
-  "two-months": -2,
+const dateShortcutChips: { id: DateChipId; label: string; duplicateOnly?: boolean }[] = [
+  { id: "minus-day", label: "-1 day" },
+  { id: "plus-day", label: "+1 day" },
+  { id: "this-month", label: "This month" },
+  { id: "minus-month", label: "-1 mon" },
+  { id: "plus-month", label: "+1 mon" },
+  { id: "no-change", label: "No change", duplicateOnly: true },
+];
+
+const dateChipShifts: Partial<Record<DateChipId, { unit: "day" | "month"; offset: number }>> = {
+  "minus-day": { unit: "day", offset: -1 },
+  "plus-day": { unit: "day", offset: 1 },
+  "minus-month": { unit: "month", offset: -1 },
+  "plus-month": { unit: "month", offset: 1 },
 };
 
 function applyDateChip(
@@ -49,13 +60,17 @@ function applyDateChip(
   originalDatetime: string,
   timeZone: string,
 ): string {
-  if (chip === "today") {
-    return withDateTimeLocalToday(datetime, timeZone);
+  const shift = dateChipShifts[chip];
+  if (shift?.unit === "day") {
+    return shiftDateTimeLocalByDays(datetime, shift.offset, timeZone);
+  }
+  if (shift?.unit === "month") {
+    return shiftDateTimeLocalByMonths(datetime, shift.offset, timeZone);
   }
   if (chip === "no-change") {
     return originalDatetime || datetime;
   }
-  const { year, month } = calendarMonthFromNow(monthChipOffsets[chip], timeZone);
+  const { year, month } = calendarMonthFromNow(0, timeZone);
   return withDateTimeLocalMonth(datetime, year, month, timeZone);
 }
 
@@ -85,7 +100,7 @@ export function TransactionFormPage() {
   const [useEcb, setUseEcb] = useState(true);
   const [datetime, setDatetime] = useState(() => toDateTimeLocal(undefined, timeZone));
   const [dateChip, setDateChip] = useState<DateChipId | null>(
-    duplicating ? "this-month" : "today",
+    duplicating ? "this-month" : null,
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -133,7 +148,7 @@ export function TransactionFormPage() {
     if (duplicating) {
       const original = toDateTimeLocal(entry.date, timeZone);
       const thisMonth = applyDateChip(original, "this-month", original, timeZone);
-      setDateChip(isDateTimeLocalFutureDate(thisMonth, timeZone) ? "today" : "this-month");
+      setDateChip(isDateTimeLocalFutureDate(thisMonth, timeZone) ? null : "this-month");
     }
   }, [duplicating, existing.data, timeZone]);
 
@@ -363,18 +378,15 @@ export function TransactionFormPage() {
     : isDateTimeLocalFutureDate(datetime, timeZone)
       ? "Date can't be in the future"
       : undefined;
-  const dateChips = (
-    [
-      { id: "today", label: "Today" },
-      { id: "this-month", label: "This month" },
-      { id: "last-month", label: "Last month" },
-      { id: "two-months", label: "2 months back" },
-      ...(duplicating ? [{ id: "no-change" as const, label: "No change" }] : []),
-    ] satisfies { id: DateChipId; label: string }[]
-  ).map((chip) => ({
-    ...chip,
-    blocked: isDateTimeLocalFutureDate(applyDateChip(datetime, chip.id, originalDatetime, timeZone), timeZone),
-  }));
+  const dateChips = dateShortcutChips
+    .filter((chip) => !chip.duplicateOnly || duplicating)
+    .map((chip) => ({
+      ...chip,
+      blocked: isDateTimeLocalFutureDate(
+        applyDateChip(datetime, chip.id, originalDatetime, timeZone),
+        timeZone,
+      ),
+    }));
 
   return (
     <div className="page-stack">
@@ -531,7 +543,7 @@ export function TransactionFormPage() {
                   title="Reset to now"
                   aria-label="Reset to now"
                   onClick={() => {
-                    setDateChip("today");
+                    setDateChip(null);
                     setDatetime(toDateTimeLocal(undefined, timeZone));
                   }}
                 >
